@@ -1,0 +1,161 @@
+-- ============================================================
+-- BISU Computing Research - Power BI Analysis Guide
+-- ============================================================
+-- Your Python 3.14 is too new for Power BI Python visuals.
+-- Use Power BI NATIVE visuals instead (no Python needed).
+-- 
+-- STEP 0: LOAD THE DATA
+--   1. Open Power BI Desktop
+--   2. Home > Get Data > Text/CSV
+--   3. Browse to: bisu_computing_crossref_results.csv
+--   4. Click Load
+--
+-- STEP 0B: FIX DATA TYPES (Power Query Editor)
+--   1. Home > Transform Data
+--   2. Select "Year" column > Change Type > Whole Number
+--   3. Click "Close & Apply"
+-- ============================================================
+
+
+-- ============================================================
+-- DAX MEASURES (go to Modeling > New Measure for each)
+-- ============================================================
+
+-- Measure 1: Total Publications
+Total Publications = COUNTROWS('bisu_computing_crossref_results')
+
+-- Measure 2: Unique Titles (dedup safety)
+Unique Publications = DISTINCTCOUNT('bisu_computing_crossref_results'[Title])
+
+-- Measure 3: Unique Researchers count
+Unique DOIs = DISTINCTCOUNT('bisu_computing_crossref_results'[DOI])
+
+
+-- ============================================================
+-- VISUAL 1: Publications Per Year (Clustered Bar Chart)
+-- ============================================================
+-- 1. Click empty canvas area
+-- 2. Visualizations > Clustered Bar Chart (or Column Chart)
+-- 3. Axis (X-axis): Year
+-- 4. Values (Y-axis): Title (set aggregation to "Count")
+-- 5. Format > Title > "Publications Per Year"
+
+-- ============================================================
+-- VISUAL 2: Publications by Campus (Pie or Donut Chart)
+-- ============================================================
+-- 1. Click empty canvas area
+-- 2. Visualizations > Donut Chart
+-- 3. Legend: CampusMatched
+-- 4. Values: Title (Count)
+-- 5. Format > Title > "Publications by Campus"
+
+-- ============================================================
+-- VISUAL 3: Publications by Program (Pie Chart)
+-- ============================================================
+-- 1. Click empty canvas area
+-- 2. Visualizations > Pie Chart
+-- 3. Legend: ProgramInferred
+-- 4. Values: Title (Count)
+-- 5. Format > Title > "Distribution by Computing Program"
+
+-- ============================================================
+-- VISUAL 4: Campus vs Year Matrix/Heatmap
+-- ============================================================
+-- 1. Click empty canvas area
+-- 2. Visualizations > Matrix
+-- 3. Rows: CampusMatched
+-- 4. Columns: Year
+-- 5. Values: Title (Count)
+-- 6. Format > Conditional formatting > Background color
+--    (set based on value to create heatmap effect)
+
+-- ============================================================
+-- VISUAL 5: Top Publishers (Horizontal Bar)
+-- ============================================================
+-- 1. Click empty canvas area
+-- 2. Visualizations > Clustered Bar Chart
+-- 3. Axis (Y-axis): Publisher
+-- 4. Values (X-axis): Title (Count)
+-- 5. Sort descending by count
+-- 6. Format > Title > "Top Publishers"
+
+-- ============================================================
+-- VISUAL 6: Publication Type (Donut Chart)
+-- ============================================================
+-- 1. Click empty canvas area
+-- 2. Visualizations > Donut Chart
+-- 3. Legend: Type
+-- 4. Values: Title (Count)
+-- 5. Format > Title > "Publication Types"
+
+-- ============================================================
+-- VISUAL 7: Program by Campus (Stacked Bar Chart)
+-- ============================================================
+-- 1. Click empty canvas area
+-- 2. Visualizations > Stacked Bar Chart
+-- 3. Axis (Y-axis): CampusMatched
+-- 4. Values (X-axis): Title (Count)
+-- 5. Legend: ProgramInferred
+-- 6. Format > Title > "Program Distribution per Campus"
+
+-- ============================================================
+-- VISUAL 8: Publications Trend Line
+-- ============================================================
+-- 1. Click empty canvas area
+-- 2. Visualizations > Line Chart
+-- 3. Axis (X-axis): Year
+-- 4. Values (Y-axis): Title (Count)
+-- 5. Legend: ProgramInferred
+-- 6. Format > Title > "Research Trend by Program"
+
+-- ============================================================
+-- VISUAL 9: Full Research Table
+-- ============================================================
+-- 1. Click empty canvas area
+-- 2. Visualizations > Table
+-- 3. Add columns: Year, CampusMatched, ProgramInferred,
+--    Title, Researchers, Venue, Publisher, DOI
+-- 4. Format > Title > "Complete Research List"
+
+-- ============================================================
+-- VISUAL 10: KPI Cards (Summary Numbers)
+-- ============================================================
+-- Card 1:
+--   Visualizations > Card
+--   Field: Title (Count) -> shows total publications (61)
+--
+-- Card 2:
+--   Visualizations > Card  
+--   Field: DOI (Distinct Count) -> shows unique papers
+--
+-- Card 3 (Year Range):
+--   Create measure: Year Range = MIN('bisu_computing_crossref_results'[Year]) & " - " & MAX('bisu_computing_crossref_results'[Year])
+--   Visualizations > Card
+--   Field: Year Range
+
+-- ============================================================
+-- SLICERS (Interactive Filters)
+-- ============================================================
+-- Add these slicers so users can filter all visuals:
+--
+-- Slicer 1: Year (use Between or List mode)
+--   Visualizations > Slicer > Field: Year
+--
+-- Slicer 2: Campus
+--   Visualizations > Slicer > Field: CampusMatched
+--
+-- Slicer 3: Program
+--   Visualizations > Slicer > Field: ProgramInferred
+--
+-- Slicer 4: Publisher
+--   Visualizations > Slicer > Field: Publisher
+
+-- ============================================================
+-- SUGGESTED DASHBOARD LAYOUT (1920x1080)
+-- ============================================================
+-- TOP ROW:      [Card: Total Pubs] [Card: Year Range] [Slicer: Year] [Slicer: Campus]
+-- MIDDLE LEFT:  [Bar: Pubs Per Year]
+-- MIDDLE RIGHT: [Donut: By Campus]
+-- BOTTOM LEFT:  [Stacked Bar: Program by Campus]
+-- BOTTOM RIGHT: [Line: Trend by Program]
+-- PAGE 2:       [Full Table with all columns]
