@@ -234,7 +234,9 @@ intro_p2 = (
     "coverage across Google Scholar, Web of Science, Scopus, Crossref, and DataCite, noting that although "
     "Crossref trails in dataset citation coverage, it remains a robust source for article-level metadata. "
     "Kaminska and Nazarovets (2018) further demonstrated Crossref's utility for scientometric analysis "
-    "in the social sciences and humanities through the ScientoMiner ICR module."
+    "in the social sciences and humanities through the ScientoMiner ICR module. "
+    "Beyond Crossref, Aria et al. (2024) developed openalexR, an R package for collecting bibliometric "
+    "data from OpenAlex, further expanding the toolkit available for open bibliometric research."
 )
 
 intro_p3 = (
