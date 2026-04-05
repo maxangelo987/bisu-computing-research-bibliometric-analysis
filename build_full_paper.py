@@ -36,32 +36,20 @@ journal_count = type_counts.get("journal-article", 0)
 # ── References (from attached CSV) ──────────────────────────
 # These are the actual references from the user's References CSV.
 # We use APA style as the template uses APA.
-REFS = [
-    # [1]
+REFS = sorted([
     'Hendricks, G., Tkaczyk, D., Lin, J., & Feeney, P. (2020). Crossref: The sustainable source of community-owned scholarly metadata. Quantitative Science Studies, 1(1), 414-427. https://doi.org/10.1162/qss_a_00022',
-    # [2]
     'Velez-Estevez, A., Pérez, I. J., García-Sánchez, P., Moral-Munoz, J. A., & Cobo, M. (2023). New trends in bibliometric APIs: A comparative analysis. Information Processing & Management, 60(4), 103385. https://doi.org/10.1016/j.ipm.2023.103385',
-    # [3]
     'Baas, J., Schotten, M., Plume, A., Côté, G., & Karimi, R. (2020). Scopus as a curated, high-quality bibliometric data source for academic research in quantitative science studies. Quantitative Science Studies, 1(1), 377-386. https://doi.org/10.1162/qss_a_00019',
-    # [4]
     'Gerasimov, I., Kc, B., Mehrabian, A., Acker, J. G., & McGuire, M. P. (2024). Comparison of datasets citation coverage in Google Scholar, Web of Science, Scopus, Crossref, and DataCite. Scientometrics, 129, 5765-5790. https://doi.org/10.1007/s11192-024-05073-5',
-    # [5]
     'Aria, M., Le, T., Cuccurullo, C., Belfiore, A., & Choe, J. (2024). openalexR: An R-Tool for collecting bibliometric data from OpenAlex. The R Journal, 16(2), 167-180. https://doi.org/10.32614/rj-2023-089',
-    # [6]
     'Kaminska, A., & Nazarovets, S. (2018). Crossref as a source of scientometric data for social sciences and humanities. EUREKA: Physics and Engineering, 5, 26-35. https://doi.org/10.30837/2522-9818.2018.5.026',
-    # [7]
     'Ricardo, V. A., Rifai, A. I., Savitri, A., & Prasetijo, J. (2024). A bibliometric analysis of drinking water distribution in coastal areas using VOSViewer. Asian Journal of Social and Humanities, 2(8), 335. https://doi.org/10.59888/ajosh.v2i8.335',
-    # [8]
     'Lim, W. M., Kumar, S., & Donthu, N. (2024). How to combine and clean bibliometric data and use bibliometric tools synergistically: Guidelines using metaverse research. Journal of Business Research, 182, 114760. https://doi.org/10.1016/j.jbusres.2024.114760',
-    # [9]
     'Kumpulainen, M., & Seppänen, M. (2022). Combining Web of Science and Scopus datasets in citation-based literature study. Scientometrics, 127, 5613-5631. https://doi.org/10.1007/s11192-022-04475-7',
-    # [10]
     'Nikolić, D., Ivanović, D., & Ivanović, L. (2024). An open-source tool for merging data from multiple citation databases. Scientometrics, 129, 6767-6790. https://doi.org/10.1007/s11192-024-05076-2',
-    # [11]
     'Nowakowska, M. (2025). A comprehensive approach to preprocessing data for bibliometric analysis. Scientometrics, 130, 1-35. https://doi.org/10.1007/s11192-025-05415-x',
-    # [12]
     'Du, Q., Zhao, R., Wan, Q., Li, S., Li, H., Wang, D., Ho, C. W., Dai, Z., Chen, Y., & Shan, D. (2024). Protocol for conducting bibliometric analysis in biomedicine and related research using CiteSpace and VOSviewer software. STAR Protocols, 5(3), 103269. https://doi.org/10.1016/j.xpro.2024.103269',
-]
+], key=lambda r: r.split(',')[0].split()[-1].lower())
 
 
 # ── Helper functions ─────────────────────────────────────────
@@ -175,7 +163,12 @@ set_paragraph_text(paras[2],
 set_paragraph_text(paras[3], "maxangelo.perin@bisu.edu.ph", bold=False, size=12)
 
 # ── ORCID (para 4) ──────────────────────────────────────────
-set_paragraph_text(paras[4], "", bold=False, size=12)
+set_paragraph_text(paras[4], "https://orcid.org/0000-0002-2746-7220", bold=False, size=12)
+
+# ── Remove template instructions (paras 5-50) ──────────────
+for i in range(5, 51):
+    if i < len(paras):
+        set_paragraph_text(paras[i], "", size=12)
 
 # ── Abstract (para 51) ──────────────────────────────────────
 set_paragraph_text(paras[51],
