@@ -1,21 +1,26 @@
 # Crossref Data Refresh Audit — September 2026
 
-Retrieval completed: **2026-09-12 03:41 UTC**
+Retrieval completed: **2026-09-12 06:38 UTC**
 
-Validated BISU computing records: **105**
-
-Bilar Campus records: **17**
+Validated unique BISU computing records: **105**
 
 Springer/Springer Nature records: **8**
 
 Author-evidence records flagged for manual review: **32**
+
+Multi-campus collaborative records: **9**
+
+Records still lacking a resolved campus: **2**
+
+## Campus counting rule
+Campus-level productivity uses **full counting**. If a publication has verified contributors from more than one BISU campus, the same unique publication contributes one credit to each participating campus. Therefore, campus totals may sum to more than the number of unique publications. `ContributingCampuses` preserves this attribution explicitly.
 
 ## Discovery method
 - author/DOI recovery: 102
 - affiliation discovery: 3
 
 ## Method
-The harvester now combines relevance-ranked Crossref affiliation queries with author expansion from verified BISU computing authors and direct DOI regression checks for verified BISU works that Crossref affiliation-only searches previously missed. Author-only inclusions require a trusted BISU author match plus a computing-domain signal and are explicitly flagged when manual review is still advisable.
+The harvester combines relevance-ranked Crossref affiliation queries with author expansion from verified BISU computing authors and direct DOI regression checks for verified BISU works that Crossref affiliation-only searches previously missed. A separate attribution pass resolves generic BISU affiliations using explicit campus metadata and confirmed author-campus mappings.
 
 ## By year
 - 2025: 36
@@ -26,12 +31,11 @@ The harvester now combines relevance-ranked Crossref affiliation queries with au
 - 2023: 7
 - 2020: 5
 
-## By campus
-- BISU (campus unspecified): 31
-- Clarin Campus: 29
-- Candijay Campus: 21
-- Bilar Campus: 17
-- Main Campus: 3
+## By campus — full counting
+- Clarin Campus: 31
+- Candijay Campus: 30
+- Main Campus: 24
+- Bilar Campus: 23
 - Balilihan Campus: 2
 - Calape Campus: 2
 
@@ -60,4 +64,4 @@ The harvester now combines relevance-ranked Crossref affiliation queries with au
 - AI Publications: 2
 - UCL Press: 1
 
-All 13 figures in `charts/` were regenerated from this refreshed CSV.
+All 13 figures in `charts/` were regenerated from this refreshed CSV; campus-dependent figures use the full-counting attribution rule.
