@@ -8,6 +8,10 @@ on:
       - 'scraping_computing_reseaches_of_bohol_island_state_university.py'
       - '.github/workflows/refresh-crossref-v3.yml'
 
+concurrency:
+  group: bisu-crossref-refresh-data-refresh-2026-09-12
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -103,7 +107,7 @@ jobs:
           bilar = sum(r.get('CampusMatched') == 'Bilar Campus' for r in rows)
           review = sum(r.get('NeedsManualReview') == 'YES' for r in rows)
 
-          text = f'''# Crossref Data Refresh Audit — September 2026\n\nRetrieval completed: **{now}**\n\nValidated BISU computing records: **{len(rows)}**\n\nBilar Campus records: **{bilar}**\n\nSpringer/Springer Nature records: **{springer}**\n\nAuthor-evidence records flagged for manual review: **{review}**\n\n## Discovery method\n{fmt(discovery)}\n\n## Method\nThe harvester now combines relevance-ranked Crossref affiliation queries with author expansion from verified BISU-affiliated authors and direct DOI regression checks for verified BISU works that Crossref affiliation-only searches previously missed. Author-only inclusions require a trusted BISU author match plus a computing-domain signal and are explicitly flagged when manual review is still advisable.\n\n## By year\n{fmt(year)}\n\n## By campus\n{fmt(campus)}\n\n## By inferred program\n{fmt(program)}\n\n## By document type\n{fmt(typ)}\n\n## Top publishers\n{fmt(Counter(dict(publisher.most_common(10))))}\n\nAll 13 figures in `charts/` were regenerated from this refreshed CSV.\n'''
+          text = f'''# Crossref Data Refresh Audit — September 2026\n\nRetrieval completed: **{now}**\n\nValidated BISU computing records: **{len(rows)}**\n\nBilar Campus records: **{bilar}**\n\nSpringer/Springer Nature records: **{springer}**\n\nAuthor-evidence records flagged for manual review: **{review}**\n\n## Discovery method\n{fmt(discovery)}\n\n## Method\nThe harvester now combines relevance-ranked Crossref affiliation queries with author expansion from verified BISU computing authors and direct DOI regression checks for verified BISU works that Crossref affiliation-only searches previously missed. Author-only inclusions require a trusted BISU author match plus a computing-domain signal and are explicitly flagged when manual review is still advisable.\n\n## By year\n{fmt(year)}\n\n## By campus\n{fmt(campus)}\n\n## By inferred program\n{fmt(program)}\n\n## By document type\n{fmt(typ)}\n\n## Top publishers\n{fmt(Counter(dict(publisher.most_common(10))))}\n\nAll 13 figures in `charts/` were regenerated from this refreshed CSV.\n'''
           open('DATA_REFRESH_2026-09-12.md', 'w', encoding='utf-8').write(text)
           PY
 
