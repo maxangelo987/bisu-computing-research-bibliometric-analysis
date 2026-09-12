@@ -31,7 +31,7 @@ START_YEAR = 2018
 END_YEAR = date.today().year
 OUTPUT_CSV = "bisu_computing_crossref_results.csv"
 
-MAX_PAGES_PER_QUERY = 10
+MAX_PAGES_PER_QUERY = 5
 MAX_ITEMS_PER_QUERY = 5000
 
 ALLOWED_TYPES = {
@@ -494,66 +494,38 @@ def fetch_crossref_for_affiliation(
     end_year: int,
     rows_per_request: int = ROWS_PER_REQUEST,
 ) -> List[dict]:
+    """Fetch relevance-ranked affiliation search results using offset pagination.
+
+    Crossref cursor pagination is designed for deep result traversal and does not
+    preserve the relevance ordering needed by query.affiliation. Offset pages keep
+    the high-scoring institutional matches at the front, after which each record is
+    strictly verified from its author affiliation strings.
+    """
     all_rows = []
-    cursor = "*"
-    page_num = 0
 
-    seen_cursors = set()
-    seen_page_signatures = set()
-
-    while True:
-        page_num += 1
-
-        if page_num > MAX_PAGES_PER_QUERY:
-            print(f"[STOP] query='{affiliation_query}' reached MAX_PAGES_PER_QUERY={MAX_PAGES_PER_QUERY}")
-            break
-
-        if cursor in seen_cursors:
-            print(f"[STOP] query='{affiliation_query}' repeated cursor detected")
-            break
-        seen_cursors.add(cursor)
-
+    for page_num in range(1, MAX_PAGES_PER_QUERY + 1):
+        offset = (page_num - 1) * rows_per_request
         params = {
             "query.affiliation": affiliation_query,
             "filter": f"from-pub-date:{start_year}-01-01,until-pub-date:{end_year}-12-31",
             "rows": rows_per_request,
-            "cursor": cursor,
+            "offset": offset,
             "mailto": MAILTO,
         }
 
         response = session.get(CROSSREF_URL, params=params, timeout=60)
-
         if response.status_code != 200:
-            print(f"[ERROR] query='{affiliation_query}' status={response.status_code}")
+            print(f"[ERROR] query='{affiliation_query}' offset={offset} status={response.status_code}")
             print(response.text[:500])
             break
 
         payload = response.json()
         items = payload.get("message", {}).get("items", [])
-
-        print(f"[INFO] Query='{affiliation_query}' page={page_num} fetched={len(items)}")
-
+        print(f"[INFO] Query='{affiliation_query}' page={page_num} offset={offset} fetched={len(items)}")
         if not items:
-            print(f"[STOP] query='{affiliation_query}' no items returned")
             break
-
-        # detect repeated page contents
-        page_signature_parts = []
-        for item in items[:10]:
-            doi = (item.get("DOI") or "").strip().lower()
-            title = extract_title(item).lower()
-            year = extract_year(item)
-            page_signature_parts.append(f"{doi}|{title}|{year}")
-
-        page_signature = " || ".join(page_signature_parts)
-
-        if page_signature in seen_page_signatures:
-            print(f"[STOP] query='{affiliation_query}' repeated page signature detected")
-            break
-        seen_page_signatures.add(page_signature)
 
         kept_this_page = 0
-
         for item in items:
             work_type = item.get("type", "")
             if ALLOWED_TYPES and work_type not in ALLOWED_TYPES:
@@ -562,7 +534,6 @@ def fetch_crossref_for_affiliation(
             year = extract_year(item)
             if year is None:
                 continue
-
             title = extract_title(item)
             if not title:
                 continue
@@ -570,64 +541,39 @@ def fetch_crossref_for_affiliation(
             researchers, affiliations = extract_authors_and_affiliations(item)
             if not affiliations:
                 continue
-
             campus, matched_aff, confidence = match_bisu_campus(affiliations)
             if not campus:
                 continue
-
             if not is_computing_record(item, affiliations):
                 continue
-
-            program_inferred = infer_program(item, affiliations)
-            venue = extract_venue(item)
-            abstract = clean_text(item.get("abstract"))
-            doi = item.get("DOI", "")
-            url = item.get("URL", "")
-            subjects = "; ".join(item.get("subject", []) or [])
 
             row = {
                 "Year": year,
                 "CampusMatched": campus,
                 "CampusMatchedConfidence": confidence,
-                "ProgramInferred": program_inferred,
+                "ProgramInferred": infer_program(item, affiliations),
                 "Title": title,
                 "Researchers": researchers,
-                "Venue": venue,
+                "Venue": extract_venue(item),
                 "Publisher": item.get("publisher", ""),
                 "Type": work_type,
-                "DOI": doi,
-                "URL": url,
+                "DOI": item.get("DOI", ""),
+                "URL": item.get("URL", ""),
                 "MatchedAffiliation": matched_aff or "",
                 "AllAffiliations": " | ".join(affiliations),
-                "Subjects": subjects,
-                "Abstract": abstract,
+                "Subjects": "; ".join(item.get("subject", []) or []),
+                "Abstract": clean_text(item.get("abstract")),
                 "CrossrefQueryUsed": affiliation_query,
             }
-
             all_rows.append(row)
             kept_this_page += 1
-
             if len(all_rows) >= MAX_ITEMS_PER_QUERY:
-                print(f"[STOP] query='{affiliation_query}' reached MAX_ITEMS_PER_QUERY={MAX_ITEMS_PER_QUERY}")
                 return all_rows
 
         print(f"[INFO] Query='{affiliation_query}' kept={kept_this_page} total_kept={len(all_rows)}")
-
         if len(items) < rows_per_request:
-            print(f"[STOP] query='{affiliation_query}' last page reached")
             break
-
-        next_cursor = payload.get("message", {}).get("next-cursor")
-        if not next_cursor:
-            print(f"[STOP] query='{affiliation_query}' no next cursor")
-            break
-
-        if next_cursor == cursor:
-            print(f"[STOP] query='{affiliation_query}' next cursor same as current cursor")
-            break
-
-        cursor = next_cursor
-        time.sleep(1.0)
+        time.sleep(0.5)
 
     return all_rows
 
