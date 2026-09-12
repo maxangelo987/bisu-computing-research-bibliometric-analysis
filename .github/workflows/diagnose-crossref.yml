@@ -1,0 +1,48 @@
+name: Diagnose Crossref BISU query
+
+on:
+  push:
+    branches: [data-refresh-2026-09-12]
+    paths: ['.github/workflows/diagnose-crossref.yml']
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - name: Test current Crossref query strategies
+        run: |
+          python - <<'PY'
+          import requests
+          base='https://api.crossref.org/works'
+          headers={'User-Agent':'perinmaxangelo@gmail.com (BISU bibliometric diagnostics)'}
+          tests=[
+            ('affiliation-unquoted', {
+              'query.affiliation':'Bohol Island State University',
+              'filter':'from-pub-date:2009-01-01,until-pub-date:2026-12-31',
+              'rows':50,'mailto':'perinmaxangelo@gmail.com',
+            }),
+            ('ror', {
+              'filter':'ror-id:00hnkz789,from-pub-date:2009-01-01,until-pub-date:2026-12-31',
+              'rows':100,'mailto':'perinmaxangelo@gmail.com',
+            }),
+          ]
+          for name,params in tests:
+            r=requests.get(base,params=params,headers=headers,timeout=60)
+            print('\n===',name,'status',r.status_code,'===')
+            data=r.json()['message']
+            print('total-results',data.get('total-results'))
+            matched=0
+            for i,item in enumerate(data.get('items',[]),1):
+              affs=[a.get('name','') for au in item.get('author',[]) for a in (au.get('affiliation') or [])]
+              is_bisu=any('bohol island state university' in a.lower() or 'bisu' in a.lower() for a in affs)
+              if is_bisu:
+                matched += 1
+                print('MATCH',i,'score=',item.get('score'),'year=',(item.get('published',{}).get('date-parts') or [['?']])[0][0],'doi=',item.get('DOI'),'title=',(item.get('title') or [''])[0][:130])
+                print('  AFF=', ' | '.join(affs))
+            print('BISU matches in returned page:',matched,'of',len(data.get('items',[])))
+          PY
