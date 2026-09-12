@@ -1,4 +1,4 @@
-name: Refresh Crossref dataset v4
+name: Refresh Crossref dataset v5
 
 on:
   workflow_dispatch:
@@ -6,6 +6,8 @@ on:
     branches: [data-refresh-2026-09-12]
     paths:
       - 'scraping_computing_reseaches_of_bohol_island_state_university.py'
+      - 'apply_campus_attribution.py'
+      - 'regenerate_multicampus_figures.py'
       - '.github/workflows/refresh-crossref-v3.yml'
 
 concurrency:
@@ -37,7 +39,10 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python scraping_computing_reseaches_of_bohol_island_state_university.py | tee refresh_scrape_v4.log
+          python scraping_computing_reseaches_of_bohol_island_state_university.py | tee refresh_scrape_v5.log
+
+      - name: Apply confirmed campus attribution
+        run: python apply_campus_attribution.py | tee campus_attribution_v5.log
 
       - name: Validate refreshed CSV
         run: |
@@ -68,8 +73,12 @@ jobs:
           if missing:
               raise SystemExit('Known Springer DOI regression: ' + ', '.join(missing))
 
+          def campuses(r):
+              return [x.strip() for x in (r.get('ContributingCampuses') or '').split('|') if x.strip()]
+
+          full = Counter(c for r in rows for c in campuses(r))
           print('VALIDATED_ROWS', len(rows))
-          print('BILAR_ROWS', sum(r.get('CampusMatched') == 'Bilar Campus' for r in rows))
+          print('CAMPUS_FULL_COUNTS', dict(full))
           print('SPRINGER_ROWS', sum('springer' in (r.get('Publisher') or '').lower() for r in rows))
           print('BOOK_CHAPTERS', sum(r.get('Type') == 'book-chapter' for r in rows))
           print('MANUAL_REVIEW', sum(r.get('NeedsManualReview') == 'YES' for r in rows))
@@ -77,7 +86,9 @@ jobs:
           PY
 
       - name: Regenerate figures
-        run: python analyze_bisu_research.py | tee refresh_analysis_v4.log
+        run: |
+          python analyze_bisu_research.py | tee refresh_analysis_v5.log
+          python regenerate_multicampus_figures.py | tee multicampus_figures_v5.log
 
       - name: Write refresh audit
         run: |
@@ -90,7 +101,6 @@ jobs:
               rows = list(csv.DictReader(f))
 
           year = Counter(r['Year'] for r in rows)
-          campus = Counter(r['CampusMatched'] for r in rows)
           program = Counter(r['ProgramInferred'] for r in rows)
           typ = Counter(r['Type'] for r in rows)
           publisher = Counter(r['Publisher'] for r in rows)
@@ -99,15 +109,21 @@ jobs:
               else 'affiliation discovery'
               for r in rows
           )
+          campus = Counter()
+          for r in rows:
+              for c in [x.strip() for x in (r.get('ContributingCampuses') or '').split('|') if x.strip()]:
+                  campus[c] += 1
+
           def fmt(c):
               return '\n'.join(f'- {k or "(blank)"}: {v}' for k, v in c.most_common())
 
           now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
           springer = sum('springer' in (r.get('Publisher') or '').lower() for r in rows)
-          bilar = sum(r.get('CampusMatched') == 'Bilar Campus' for r in rows)
           review = sum(r.get('NeedsManualReview') == 'YES' for r in rows)
+          unspecified = sum(not (r.get('ContributingCampuses') or '').strip() for r in rows)
+          multi = sum(len([x for x in (r.get('ContributingCampuses') or '').split('|') if x.strip()]) > 1 for r in rows)
 
-          text = f'''# Crossref Data Refresh Audit — September 2026\n\nRetrieval completed: **{now}**\n\nValidated BISU computing records: **{len(rows)}**\n\nBilar Campus records: **{bilar}**\n\nSpringer/Springer Nature records: **{springer}**\n\nAuthor-evidence records flagged for manual review: **{review}**\n\n## Discovery method\n{fmt(discovery)}\n\n## Method\nThe harvester now combines relevance-ranked Crossref affiliation queries with author expansion from verified BISU computing authors and direct DOI regression checks for verified BISU works that Crossref affiliation-only searches previously missed. Author-only inclusions require a trusted BISU author match plus a computing-domain signal and are explicitly flagged when manual review is still advisable.\n\n## By year\n{fmt(year)}\n\n## By campus\n{fmt(campus)}\n\n## By inferred program\n{fmt(program)}\n\n## By document type\n{fmt(typ)}\n\n## Top publishers\n{fmt(Counter(dict(publisher.most_common(10))))}\n\nAll 13 figures in `charts/` were regenerated from this refreshed CSV.\n'''
+          text = f'''# Crossref Data Refresh Audit — September 2026\n\nRetrieval completed: **{now}**\n\nValidated unique BISU computing records: **{len(rows)}**\n\nSpringer/Springer Nature records: **{springer}**\n\nAuthor-evidence records flagged for manual review: **{review}**\n\nMulti-campus collaborative records: **{multi}**\n\nRecords still lacking a resolved campus: **{unspecified}**\n\n## Campus counting rule\nCampus-level productivity uses **full counting**. If a publication has verified contributors from more than one BISU campus, the same unique publication contributes one credit to each participating campus. Therefore, campus totals may sum to more than the number of unique publications. `ContributingCampuses` preserves this attribution explicitly.\n\n## Discovery method\n{fmt(discovery)}\n\n## Method\nThe harvester combines relevance-ranked Crossref affiliation queries with author expansion from verified BISU computing authors and direct DOI regression checks for verified BISU works that Crossref affiliation-only searches previously missed. A separate attribution pass resolves generic BISU affiliations using explicit campus metadata and confirmed author-campus mappings.\n\n## By year\n{fmt(year)}\n\n## By campus — full counting\n{fmt(campus)}\n\n## By inferred program\n{fmt(program)}\n\n## By document type\n{fmt(typ)}\n\n## Top publishers\n{fmt(Counter(dict(publisher.most_common(10))))}\n\nAll 13 figures in `charts/` were regenerated from this refreshed CSV; campus-dependent figures use the full-counting attribution rule.\n'''
           open('DATA_REFRESH_2026-09-12.md', 'w', encoding='utf-8').write(text)
           PY
 
@@ -119,7 +135,7 @@ jobs:
           if git diff --cached --quiet; then
             echo 'No data/figure changes detected.'
           else
-            git commit -m 'Refresh BISU dataset with author-expanded Springer recovery [skip ci]'
+            git commit -m 'Apply full-count campus attribution to September dataset [skip ci]'
             git push origin HEAD:data-refresh-2026-09-12
           fi
 
@@ -127,12 +143,12 @@ jobs:
         run: |
           mkdir -p refresh-package
           cp bisu_computing_crossref_results.csv DATA_REFRESH_2026-09-12.md refresh-package/
-          cp refresh_scrape_v4.log refresh_analysis_v4.log refresh-package/
+          cp refresh_scrape_v5.log campus_attribution_v5.log refresh_analysis_v5.log multicampus_figures_v5.log refresh-package/
           cp -R charts refresh-package/
 
       - name: Upload refresh package
         uses: actions/upload-artifact@v4
         with:
-          name: BISU-bibliometric-refresh-v4-2026-09-12
+          name: BISU-bibliometric-refresh-v5-2026-09-12
           path: refresh-package/
           retention-days: 30
