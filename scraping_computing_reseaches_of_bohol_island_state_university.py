@@ -27,7 +27,7 @@ CROSSREF_URL = "https://api.crossref.org/works"
 MAILTO = "perinmaxangelo@gmail.com"
 
 ROWS_PER_REQUEST = 500
-START_YEAR = 2009
+START_YEAR = 2018
 END_YEAR = date.today().year
 OUTPUT_CSV = "bisu_computing_crossref_results.csv"
 
@@ -47,14 +47,17 @@ ALLOWED_TYPES = {
 }
 
 # NOTE: removed "BISU" because it is too broad
+# Crossref query.affiliation is relevance/token based rather than an exact-phrase
+# operator. Keep these unquoted, then verify BISU strictly from returned author
+# affiliation strings with match_bisu_campus().
 AFFILIATION_QUERIES = [
-    '"Bohol Island State University"',
-    '"Bohol Island State University" Main Campus',
-    '"Bohol Island State University" Balilihan',
-    '"Bohol Island State University" Bilar',
-    '"Bohol Island State University" Calape',
-    '"Bohol Island State University" Candijay',
-    '"Bohol Island State University" Clarin',
+    'Bohol Island State University',
+    'Bohol Island State University Main Campus',
+    'Bohol Island State University Balilihan',
+    'Bohol Island State University Bilar',
+    'Bohol Island State University Calape',
+    'Bohol Island State University Candijay',
+    'Bohol Island State University Clarin',
 ]
 
 # =========================================================
@@ -634,8 +637,10 @@ def fetch_crossref_for_affiliation(
 # =========================================================
 def save_to_csv(filename: str, rows: List[dict]) -> None:
     if not rows:
-        print("[INFO] No rows found.")
-        return
+        raise RuntimeError(
+            "Crossref refresh returned zero validated BISU computing records; "
+            "refusing to leave a stale CSV in place."
+        )
 
     fieldnames = [
         "Year",

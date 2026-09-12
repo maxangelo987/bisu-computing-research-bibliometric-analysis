@@ -1,8 +1,8 @@
-# Crossref Data Refresh
+# Crossref Data Refresh Audit — 2026-09-12
 
-Refreshed: 2026-09-12 02:29 UTC
+Retrieval completed: **2026-09-12 02:37 UTC**
 
-Total records: **61**
+Validated BISU computing records: **61**
 
 ## By year
 - 2025: 28
@@ -13,7 +13,7 @@ Total records: **61**
 - 2020: 1
 - 2018: 1
 
-## By campus (raw scraper classification)
+## By raw campus classification
 - BISU (campus unspecified): 25
 - Clarin Campus: 12
 - Main Campus: 8
@@ -22,7 +22,7 @@ Total records: **61**
 - Balilihan Campus: 1
 - Calape Campus: 1
 
-## By program
+## By inferred computing program
 - Computer Science: 38
 - Information Technology: 16
 - Computer Engineering: 6
@@ -32,4 +32,4 @@ Total records: **61**
 - proceedings-article: 54
 - journal-article: 7
 
-The 13 figures in `charts/` were regenerated from this refreshed CSV.
+All 13 figures in `charts/` were regenerated from this CSV after the corrected unquoted affiliation search and strict BISU affiliation verification.
