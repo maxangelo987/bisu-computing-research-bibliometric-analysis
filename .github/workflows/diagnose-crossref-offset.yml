@@ -1,0 +1,49 @@
+name: Diagnose Crossref offset pagination
+
+on:
+  push:
+    branches: [data-refresh-2026-09-12]
+    paths: ['.github/workflows/diagnose-crossref-offset.yml']
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: data-refresh-2026-09-12
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - name: Test offset pages with strict BISU and computing validation
+        run: |
+          python - <<'PY'
+          import requests
+          import importlib.util
+
+          spec=importlib.util.spec_from_file_location('s','scraping_computing_reseaches_of_bohol_island_state_university.py')
+          s=importlib.util.module_from_spec(spec); spec.loader.exec_module(s)
+          sess=s.build_session()
+          queries=['Bohol Island State University','Bohol Island State University Bilar','Bohol Island State University Clarin','Bohol Island State University Candijay','Bohol Island State University Main Campus','Bohol Island State University Balilihan','Bohol Island State University Calape']
+          seen=set()
+          for q in queries:
+            print('\nQUERY',q)
+            empty_streak=0
+            for offset in [0,500,1000,1500,2000]:
+              params={'query.affiliation':q,'filter':'from-pub-date:2018-01-01,until-pub-date:2026-12-31','rows':500,'offset':offset,'mailto':s.MAILTO}
+              r=sess.get(s.CROSSREF_URL,params=params,timeout=60); r.raise_for_status()
+              items=r.json()['message']['items']
+              bisu=comp=0
+              for item in items:
+                _,affs=s.extract_authors_and_affiliations(item)
+                campus,_,_=s.match_bisu_campus(affs)
+                if campus:
+                  bisu+=1
+                  if s.is_computing_record(item,affs):
+                    comp+=1
+                    key=(item.get('DOI') or s.extract_title(item)).lower()
+                    seen.add(key)
+              print(' offset',offset,'returned',len(items),'strict_bisu',bisu,'computing',comp,'unique_total',len(seen))
+          print('\nUNIQUE COMPUTING CANDIDATES',len(seen))
+          PY
