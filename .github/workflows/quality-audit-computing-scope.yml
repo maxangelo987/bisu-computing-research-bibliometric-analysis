@@ -1,0 +1,70 @@
+name: Audit computing-scope inclusion criteria
+
+on:
+  push:
+    branches: [data-refresh-2026-09-12]
+    paths: ['.github/workflows/quality-audit-computing-scope.yml']
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: data-refresh-2026-09-12
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Audit every current row against tightened computing criteria
+        run: |
+          python - <<'PY'
+          import csv,re,html
+
+          strong_terms = [
+            'computer science','computer engineering','information technology','information system','information systems',
+            'informatics','software engineering','artificial intelligence','machine learning','deep learning','neural network',
+            'computer vision','image processing','natural language processing','data mining','data science','algorithm',
+            'internet of things','iot','arduino','robotics','robotic','embedded system','rfid','face recognition','ocr',
+            'web application','web-based','web based','mobile application','android application','cybersecurity',
+            'cloud computing','api','application programming interface','coppeliasim','pcb','optical inspection',
+            'attendance system','siamese','yolo','convolutional','support vector','random forest','naive bayes',
+            'elasticnet','transfer learning','instance segmentation','sentiment analysis','feature engineering',
+            'predictive modeling','predictive framework','classification system','detection system','recognition system',
+            'intelligent information system','human resource management system','phishing url','data privacy',
+          ]
+          explicit_aff = [
+            'department of computer science','computer science department','bscs department',
+            'department of computer engineering','computer engineering department',
+            'department of information technology','information technology department',
+            'department of information systems','information systems department',
+            'college of computing and information sciences','college of computer studies','school of computing',
+            'faculty of data science and information technology','faculty of computer studies and information technology',
+          ]
+          def norm(s):
+            s=html.unescape((s or '').lower())
+            s=re.sub(r'<[^>]+>',' ',s)
+            s=re.sub(r'[-_/(),.;:]',' ',s)
+            return re.sub(r'\s+',' ',s).strip()
+          with open('bisu_computing_crossref_results.csv',encoding='utf-8-sig') as f:
+            rows=list(csv.DictReader(f))
+          keep=[]; excl=[]
+          for r in rows:
+            content=norm(' '.join([r.get('Title',''),r.get('Venue',''),r.get('Subjects',''),r.get('Abstract','')]))
+            aff=norm(r.get('AllAffiliations',''))
+            term_hits=[t for t in strong_terms if t in content]
+            aff_hits=[t for t in explicit_aff if t in aff]
+            reason=[]
+            if aff_hits: reason.append('explicit-computing-affiliation:'+','.join(aff_hits[:2]))
+            if term_hits: reason.append('computing-content:'+','.join(term_hits[:3]))
+            item=(r,'; '.join(reason) if reason else 'no explicit computing affiliation or strong computing-domain content')
+            (keep if reason else excl).append(item)
+          print('TOTAL',len(rows),'KEEP',len(keep),'EXCLUDE',len(excl))
+          print('\n=== EXCLUDE CANDIDATES ===')
+          for r,why in excl:
+            print('EXCLUDE |',r['Year'],'|',r['DOI'],'|',r['CampusMatched'],'|',r['ProgramInferred'],'|',r['Title'],'|',why,'| AFF=',r['AllAffiliations'][:500])
+          print('\n=== KEPT BUT PROGRAM UNSPECIFIED ===')
+          for r,why in keep:
+            if r['ProgramInferred']=='Computing (unspecified)':
+              print('UNSPEC |',r['Year'],'|',r['DOI'],'|',r['Title'],'|',why,'| AFF=',r['AllAffiliations'][:500])
+          PY
