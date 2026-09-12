@@ -1,0 +1,72 @@
+name: Audit computing-scope v2
+
+on:
+  push:
+    branches: [data-refresh-2026-09-12]
+    paths: ['.github/workflows/quality-audit-v2.yml']
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: data-refresh-2026-09-12
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply title-first computing-scope audit
+        run: |
+          python - <<'PY'
+          import csv,re,html
+
+          strong_terms = [
+            'computer science','computer engineering','information technology','information system','information systems',
+            'informatics','software engineering','artificial intelligence','machine learning','deep learning','neural network',
+            'computer vision','image processing','natural language processing','data mining','data science','algorithm',
+            'internet of things','iot','arduino','robotics','robotic','embedded system','rfid','face recognition','ocr',
+            'web application','web-based','web based','mobile application','android application','cybersecurity',
+            'cloud computing','application programming interface','coppeliasim','pcb','optical inspection',
+            'attendance system','siamese','yolo','mobilenet','convolutional','support vector','random forest','naive bayes',
+            'elasticnet','transfer learning','instance segmentation','sentiment analysis','feature engineering',
+            'predictive modeling','predictive framework','classification system','detection system','recognition system',
+            'intelligent information system','human resource management system','phishing url','data privacy',
+            'gis','spatial analysis','learning management system','software','database','data-driven','data driven'
+          ]
+          explicit_bisu_aff = [
+            'department of computer science','computer science department','bscs department',
+            'department of computer engineering','computer engineering department',
+            'department of information technology','information technology department',
+            'department of information systems','information systems department',
+            'college of computing and information sciences','school of computing'
+          ]
+          def norm(s):
+            s=html.unescape((s or '').lower())
+            s=re.sub(r'<[^>]+>',' ',s)
+            s=re.sub(r'[-_/(),.;:]',' ',s)
+            return re.sub(r'\s+',' ',s).strip()
+          def term_hits(text):
+            hits=[t for t in strong_terms if t in text]
+            if re.search(r'(^|\W)ai($|\W)', text): hits.append('AI')
+            return hits
+          with open('bisu_computing_crossref_results.csv',encoding='utf-8-sig') as f:
+            rows=list(csv.DictReader(f))
+          keep=[]; excl=[]
+          for r in rows:
+            primary=norm(' '.join([r.get('Title',''),r.get('Venue',''),r.get('Subjects','')]))
+            matched=norm(r.get('MatchedAffiliation',''))
+            hits=term_hits(primary)
+            affhits=[a for a in explicit_bisu_aff if a in matched]
+            reason=[]
+            if affhits: reason.append('explicit BISU computing affiliation:'+','.join(affhits[:2]))
+            if hits: reason.append('strong title/venue/subject computing signal:'+','.join(hits[:4]))
+            (keep if reason else excl).append((r,'; '.join(reason) if reason else 'no explicit BISU computing affiliation and no strong title/venue/subject signal'))
+          print('TOTAL',len(rows),'KEEP',len(keep),'EXCLUDE',len(excl))
+          print('\n=== EXCLUDE ===')
+          for r,why in excl:
+            print('EXCLUDE |',r['Year'],'|',r['DOI'],'|',r['Title'],'|',why,'| MATCHED=',r['MatchedAffiliation'])
+          print('\n=== INCLUDED WITH REASON ===')
+          for r,why in keep:
+            print('KEEP |',r['Year'],'|',r['DOI'],'|',r['Title'],'|',why)
+          PY
