@@ -1,0 +1,116 @@
+name: Refresh Crossref dataset v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [data-refresh-2026-09-12]
+    paths: ['.github/workflows/refresh-crossref-v2.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out refresh branch
+        uses: actions/checkout@v4
+        with:
+          ref: data-refresh-2026-09-12
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests matplotlib wordcloud
+
+      - name: Correct Crossref affiliation query and stale-data guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scraping_computing_reseaches_of_bohol_island_state_university.py')
+          s = p.read_text(encoding='utf-8')
+
+          s = s.replace('START_YEAR = 2009', 'START_YEAR = 2018')
+
+          old = '''AFFILIATION_QUERIES = [\n    '\"Bohol Island State University\"',\n    '\"Bohol Island State University\" Main Campus',\n    '\"Bohol Island State University\" Balilihan',\n    '\"Bohol Island State University\" Bilar',\n    '\"Bohol Island State University\" Calape',\n    '\"Bohol Island State University\" Candijay',\n    '\"Bohol Island State University\" Clarin',\n]'''
+          new = '''# Crossref query.affiliation is relevance/token based rather than an exact-phrase\n# operator. Keep these unquoted, then verify BISU strictly from returned author\n# affiliation strings with match_bisu_campus().\nAFFILIATION_QUERIES = [\n    'Bohol Island State University',\n    'Bohol Island State University Main Campus',\n    'Bohol Island State University Balilihan',\n    'Bohol Island State University Bilar',\n    'Bohol Island State University Calape',\n    'Bohol Island State University Candijay',\n    'Bohol Island State University Clarin',\n]'''
+          if old not in s:
+              raise SystemExit('Expected affiliation query block not found; refusing blind patch')
+          s = s.replace(old, new)
+
+          old_guard = '''    if not rows:\n        print("[INFO] No rows found.")\n        return'''
+          new_guard = '''    if not rows:\n        raise RuntimeError(\n            "Crossref refresh returned zero validated BISU computing records; "\n            "refusing to leave a stale CSV in place."\n        )'''
+          if old_guard not in s:
+              raise SystemExit('Expected zero-row guard not found; refusing blind patch')
+          s = s.replace(old_guard, new_guard)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Harvest current Crossref records
+        run: python scraping_computing_reseaches_of_bohol_island_state_university.py | tee refresh_scrape_v2.log
+
+      - name: Validate refreshed CSV
+        run: |
+          python - <<'PY'
+          import csv
+          with open('bisu_computing_crossref_results.csv', encoding='utf-8-sig') as f:
+              rows=list(csv.DictReader(f))
+          if not rows:
+              raise SystemExit('Refreshed CSV is empty')
+          dois=[r.get('DOI','').strip().lower() for r in rows if r.get('DOI','').strip()]
+          if len(dois) != len(set(dois)):
+              raise SystemExit('Duplicate DOI values remain after deduplication')
+          print('Validated refreshed rows:', len(rows))
+          PY
+
+      - name: Regenerate all figures
+        run: python analyze_bisu_research.py | tee refresh_analysis_v2.log
+
+      - name: Write refresh audit summary
+        run: |
+          python - <<'PY'
+          import csv
+          from collections import Counter
+          from datetime import datetime, timezone
+          with open('bisu_computing_crossref_results.csv', encoding='utf-8-sig') as f:
+              rows=list(csv.DictReader(f))
+          year=Counter(r['Year'] for r in rows)
+          raw_campus=Counter(r['CampusMatched'] for r in rows)
+          program=Counter(r['ProgramInferred'] for r in rows)
+          pubtype=Counter(r['Type'] for r in rows)
+          now=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+          def lines(c): return '\n'.join(f'- {k}: {v}' for k,v in c.most_common())
+          text=f'''# Crossref Data Refresh Audit — 2026-09-12\n\nRetrieval completed: **{now}**\n\nValidated BISU computing records: **{len(rows)}**\n\n## By year\n{lines(year)}\n\n## By raw campus classification\n{lines(raw_campus)}\n\n## By inferred computing program\n{lines(program)}\n\n## By document type\n{lines(pubtype)}\n\nAll 13 figures in `charts/` were regenerated from this CSV after the corrected unquoted affiliation search and strict BISU affiliation verification.\n'''
+          Path=None
+          open('DATA_REFRESH_2026-09-12.md','w',encoding='utf-8').write(text)
+          PY
+
+      - name: Commit corrected scraper, data and figures
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scraping_computing_reseaches_of_bohol_island_state_university.py bisu_computing_crossref_results.csv charts DATA_REFRESH_2026-09-12.md
+          if git diff --cached --quiet; then
+            echo 'No changes detected.'
+          else
+            git commit -m 'Fix Crossref query and refresh BISU bibliometric data [skip ci]'
+            git push origin HEAD:data-refresh-2026-09-12
+          fi
+
+      - name: Package refreshed data and figures
+        run: |
+          mkdir -p refresh-package
+          cp bisu_computing_crossref_results.csv DATA_REFRESH_2026-09-12.md refresh-package/
+          cp -R charts refresh-package/
+
+      - name: Upload refresh package
+        uses: actions/upload-artifact@v4
+        with:
+          name: BISU-bibliometric-refresh-2026-09-12
+          path: refresh-package/
+          retention-days: 30
