@@ -1,0 +1,75 @@
+name: Refresh Crossref dataset and figures
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - data-refresh-2026-09-12
+    paths:
+      - '.github/workflows/refresh-crossref-data.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: data-refresh-2026-09-12
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests matplotlib wordcloud
+
+      - name: Harvest current Crossref records
+        run: |
+          python scraping_computing_reseaches_of_bohol_island_state_university.py | tee refresh_scrape.log
+
+      - name: Regenerate all figures
+        run: |
+          python analyze_bisu_research.py | tee refresh_analysis.log
+
+      - name: Create refresh summary
+        run: |
+          python - <<'PY'
+          import csv
+          from collections import Counter
+          from datetime import datetime, timezone
+
+          with open('bisu_computing_crossref_results.csv', encoding='utf-8-sig') as f:
+              rows = list(csv.DictReader(f))
+
+          year = Counter(r.get('Year','') for r in rows)
+          campus = Counter(r.get('CampusMatched','') for r in rows)
+          program = Counter(r.get('ProgramInferred','') for r in rows)
+          pubtype = Counter(r.get('Type','') for r in rows)
+
+          def table(counter):
+              return '\n'.join(f'- {k or "(blank)"}: {v}' for k, v in counter.most_common())
+
+          now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+          text = f'''# Crossref Data Refresh\n\nRefreshed: {now}\n\nTotal records: **{len(rows)}**\n\n## By year\n{table(year)}\n\n## By campus (raw scraper classification)\n{table(campus)}\n\n## By program\n{table(program)}\n\n## By document type\n{table(pubtype)}\n\nThe 13 figures in `charts/` were regenerated from this refreshed CSV.\n'''
+          with open('DATA_REFRESH_2026-09-12.md','w',encoding='utf-8') as f:
+              f.write(text)
+          PY
+
+      - name: Commit refreshed dataset and figures
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bisu_computing_crossref_results.csv charts DATA_REFRESH_2026-09-12.md
+          if git diff --cached --quiet; then
+            echo "No data or figure changes detected."
+          else
+            git commit -m "Refresh Crossref dataset and figures (2026-09-12) [skip ci]"
+            git push origin HEAD:data-refresh-2026-09-12
+          fi
