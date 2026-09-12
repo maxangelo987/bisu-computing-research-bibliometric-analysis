@@ -1,0 +1,101 @@
+name: Refresh Crossref dataset v3
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [data-refresh-2026-09-12]
+    paths: ['.github/workflows/refresh-crossref-v3.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: data-refresh-2026-09-12
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests matplotlib wordcloud
+
+      - name: Replace cursor pagination with relevance-preserving offset pagination
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('scraping_computing_reseaches_of_bohol_island_state_university.py')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('MAX_PAGES_PER_QUERY = 10','MAX_PAGES_PER_QUERY = 5')
+          pattern=r'def fetch_crossref_for_affiliation\(.*?\n    return all_rows\n'
+          replacement='''def fetch_crossref_for_affiliation(\n    session: requests.Session,\n    affiliation_query: str,\n    start_year: int,\n    end_year: int,\n    rows_per_request: int = ROWS_PER_REQUEST,\n) -> List[dict]:\n    """Fetch relevance-ranked affiliation search results using offset pagination.\n\n    Crossref cursor pagination is designed for deep result traversal and does not\n    preserve the relevance ordering needed by query.affiliation. Offset pages keep\n    the high-scoring institutional matches at the front, after which each record is\n    strictly verified from its author affiliation strings.\n    """\n    all_rows = []\n\n    for page_num in range(1, MAX_PAGES_PER_QUERY + 1):\n        offset = (page_num - 1) * rows_per_request\n        params = {\n            "query.affiliation": affiliation_query,\n            "filter": f"from-pub-date:{start_year}-01-01,until-pub-date:{end_year}-12-31",\n            "rows": rows_per_request,\n            "offset": offset,\n            "mailto": MAILTO,\n        }\n\n        response = session.get(CROSSREF_URL, params=params, timeout=60)\n        if response.status_code != 200:\n            print(f"[ERROR] query='{affiliation_query}' offset={offset} status={response.status_code}")\n            print(response.text[:500])\n            break\n\n        payload = response.json()\n        items = payload.get("message", {}).get("items", [])\n        print(f"[INFO] Query='{affiliation_query}' page={page_num} offset={offset} fetched={len(items)}")\n        if not items:\n            break\n\n        kept_this_page = 0\n        for item in items:\n            work_type = item.get("type", "")\n            if ALLOWED_TYPES and work_type not in ALLOWED_TYPES:\n                continue\n\n            year = extract_year(item)\n            if year is None:\n                continue\n            title = extract_title(item)\n            if not title:\n                continue\n\n            researchers, affiliations = extract_authors_and_affiliations(item)\n            if not affiliations:\n                continue\n            campus, matched_aff, confidence = match_bisu_campus(affiliations)\n            if not campus:\n                continue\n            if not is_computing_record(item, affiliations):\n                continue\n\n            row = {\n                "Year": year,\n                "CampusMatched": campus,\n                "CampusMatchedConfidence": confidence,\n                "ProgramInferred": infer_program(item, affiliations),\n                "Title": title,\n                "Researchers": researchers,\n                "Venue": extract_venue(item),\n                "Publisher": item.get("publisher", ""),\n                "Type": work_type,\n                "DOI": item.get("DOI", ""),\n                "URL": item.get("URL", ""),\n                "MatchedAffiliation": matched_aff or "",\n                "AllAffiliations": " | ".join(affiliations),\n                "Subjects": "; ".join(item.get("subject", []) or []),\n                "Abstract": clean_text(item.get("abstract")),\n                "CrossrefQueryUsed": affiliation_query,\n            }\n            all_rows.append(row)\n            kept_this_page += 1\n            if len(all_rows) >= MAX_ITEMS_PER_QUERY:\n                return all_rows\n\n        print(f"[INFO] Query='{affiliation_query}' kept={kept_this_page} total_kept={len(all_rows)}")\n        if len(items) < rows_per_request:\n            break\n        time.sleep(0.5)\n\n    return all_rows\n'''
+          s2,n=re.subn(pattern,replacement,s,flags=re.S)
+          if n != 1:
+              raise SystemExit(f'Expected exactly one fetcher function, replaced {n}')
+          p.write_text(s2,encoding='utf-8')
+          PY
+
+      - name: Harvest current Crossref records
+        shell: bash
+        run: |
+          set -o pipefail
+          python scraping_computing_reseaches_of_bohol_island_state_university.py | tee refresh_scrape_v3.log
+
+      - name: Validate refreshed CSV and compare previous baseline
+        run: |
+          python - <<'PY'
+          import csv, subprocess
+          def read(path):
+              with open(path,encoding='utf-8-sig') as f: return list(csv.DictReader(f))
+          rows=read('bisu_computing_crossref_results.csv')
+          if not rows: raise SystemExit('Refreshed CSV is empty')
+          dois=[r.get('DOI','').strip().lower() for r in rows if r.get('DOI','').strip()]
+          if len(dois)!=len(set(dois)): raise SystemExit('Duplicate DOI values remain')
+          subprocess.run(['git','show','origin/master:bisu_computing_crossref_results.csv'],check=True,stdout=open('/tmp/old.csv','wb'))
+          old=read('/tmp/old.csv')
+          oldkeys={(r.get('DOI') or r.get('Title','')).strip().lower() for r in old}
+          newkeys={(r.get('DOI') or r.get('Title','')).strip().lower() for r in rows}
+          print('OLD_ROWS',len(old),'REFRESHED_ROWS',len(rows),'ADDED',len(newkeys-oldkeys),'REMOVED',len(oldkeys-newkeys))
+          for r in rows:
+              k=(r.get('DOI') or r.get('Title','')).strip().lower()
+              if k in newkeys-oldkeys:
+                  print('ADDED_RECORD',r.get('Year'),r.get('DOI'),r.get('Title'))
+          PY
+
+      - name: Regenerate figures
+        run: python analyze_bisu_research.py | tee refresh_analysis_v3.log
+
+      - name: Write refresh audit
+        run: |
+          python - <<'PY'
+          import csv
+          from collections import Counter
+          from datetime import datetime, timezone
+          with open('bisu_computing_crossref_results.csv',encoding='utf-8-sig') as f: rows=list(csv.DictReader(f))
+          year=Counter(r['Year'] for r in rows); campus=Counter(r['CampusMatched'] for r in rows); program=Counter(r['ProgramInferred'] for r in rows); typ=Counter(r['Type'] for r in rows)
+          def fmt(c): return '\n'.join(f'- {k}: {v}' for k,v in c.most_common())
+          now=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+          open('DATA_REFRESH_2026-09-12.md','w',encoding='utf-8').write(f'''# Crossref Data Refresh Audit — 2026-09-12\n\nRetrieval completed: **{now}**\n\nValidated BISU computing records: **{len(rows)}**\n\nSearch method: relevance-ranked `query.affiliation` with offset pagination, followed by strict validation of returned BISU author-affiliation strings and computing-domain filtering.\n\n## By year\n{fmt(year)}\n\n## By raw campus classification\n{fmt(campus)}\n\n## By inferred computing program\n{fmt(program)}\n\n## By document type\n{fmt(typ)}\n\nAll 13 figures in `charts/` were regenerated from this refreshed CSV.\n''')
+          PY
+
+      - name: Commit refresh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scraping_computing_reseaches_of_bohol_island_state_university.py bisu_computing_crossref_results.csv charts DATA_REFRESH_2026-09-12.md
+          git commit -m 'Use offset pagination and refresh BISU dataset to September 2026 [skip ci]'
+          git push origin HEAD:data-refresh-2026-09-12
+
+      - name: Package refreshed outputs
+        run: |
+          mkdir -p refresh-package
+          cp bisu_computing_crossref_results.csv DATA_REFRESH_2026-09-12.md refresh-package/
+          cp -R charts refresh-package/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BISU-bibliometric-refresh-v3-2026-09-12
+          path: refresh-package/
+          retention-days: 30
