@@ -42,9 +42,9 @@ OUTPUT_CSV = "bisu_computing_crossref_results.csv"
 ROWS_PER_REQUEST = 500
 AFFILIATION_PAGES = 5
 AUTHOR_ROWS = 100
-AUTHOR_PAGES = 2
-MAX_DYNAMIC_AUTHOR_SEEDS = 150
-REQUEST_DELAY_SECONDS = 0.15
+AUTHOR_PAGES = 1
+MAX_DYNAMIC_AUTHOR_SEEDS = 100
+REQUEST_DELAY_SECONDS = 0.12
 
 ALLOWED_TYPES = {
     "journal-article", "proceedings-article", "book-chapter", "book",
@@ -457,6 +457,11 @@ def fetch_doi_candidate(session: requests.Session, doi: str) -> Optional[dict]:
 def learn_trusted_authors(items: Iterable[dict]) -> Dict[str, str]:
     learned: Dict[str, str] = dict(TRUSTED_AUTHOR_SEEDS)
     for item in items:
+        # Do not expand from unrelated BISU disciplines. Only computing records
+        # contribute new author seeds; this keeps author expansion precise and fast.
+        _, affiliations = extract_authors_and_affiliations(item)
+        if not is_computing_record(item, affiliations):
+            continue
         for name, campus in bisu_author_evidence(item):
             if name not in learned or learned[name] == "BISU (campus unspecified)":
                 learned[name] = campus
@@ -468,7 +473,7 @@ def learn_trusted_authors(items: Iterable[dict]) -> Dict[str, str]:
         if sig not in compact or compact[sig][1] == "BISU (campus unspecified)":
             compact[sig] = (name, campus)
     result = {name: campus for name, campus in compact.values()}
-    print(f"[AUTHORS] Trusted BISU author seeds: {len(result)}")
+    print(f"[AUTHORS] Trusted BISU computing author seeds: {len(result)}")
     return result
 
 
@@ -557,8 +562,9 @@ def main() -> None:
     # Pass 1: institution/campus search.
     affiliation_items = fetch_affiliation_candidates(session)
 
-    # Learn BISU authors only when that author's own Crossref affiliation is BISU.
-    # Then search those authors directly to recover records with missing affiliations.
+    # Learn authors only from computing-related affiliation-discovered records.
+    # Direct author search then recovers Springer/other DOI records with missing
+    # affiliation strings in Crossref work metadata.
     trusted_authors = learn_trusted_authors(affiliation_items)
     dynamic_author_names = list(trusted_authors.keys())[:MAX_DYNAMIC_AUTHOR_SEEDS]
 
